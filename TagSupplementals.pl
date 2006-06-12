@@ -19,7 +19,7 @@ use MT::ObjectTag;
 my $plugin;
 
 BEGIN {
-    our $VERSION = '0.01';
+    our $VERSION = '0.02';
     $plugin = __PACKAGE__->new({
 	name => 'TagSupplementals Plugin',
 	description => 'A plugin for providing supplemental features for MT 3.3 tags.',
@@ -99,8 +99,11 @@ sub related_entries {
     my $i = 0;
     foreach (@eids) {
 	my $e = MT::Entry->load($_);
-	push @entries, $e if $e->status == MT::Entry::RELEASE();
-	last if $lastn && $i++ >= $lastn;
+	if ($e->status == MT::Entry::RELEASE()) {
+	    push @entries, $e;
+	    $i++;
+	    last if $lastn && $i >= $lastn;
+	}
     }
 
     my $res = '';
@@ -122,3 +125,5 @@ sub related_entries {
     }
     $res;
 }
+
+1;
