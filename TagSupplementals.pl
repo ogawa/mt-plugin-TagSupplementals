@@ -16,6 +16,8 @@ use MT::Entry;
 use MT::Tag;
 use MT::ObjectTag;
 
+our $HAVE_MT_XSEARCH = 0;
+
 my $plugin;
 
 BEGIN {
@@ -31,6 +33,17 @@ BEGIN {
     MT->add_plugin($plugin);
     MT::Template::Context->add_tag(EntryTagsCount => \&entry_tags_count);
     MT::Template::Context->add_container_tag(RelatedEntries => \&related_entries);
+
+    eval { require MT::XSearch; $HAVE_MT_XSEARCH = 1 };
+    if ($HAVE_MT_XSEARCH) {
+	MT::XSearch->add_search_plugin('TagSupplementals', {
+	    label => 'Tag Search',
+	    description => 'Tag Search plugin for MT-XSearch',
+	    on_execute => \&xsearch_on_execute,
+	    on_stash => \&xsearch_on_stash,
+	});
+	MT::Template::Context->add_container_tag(XSearchTags => \&xsearch_tags);
+    }
 }
 
 sub entry_tags_count {
@@ -124,6 +137,95 @@ sub related_entries {
 	$i++;
     }
     $res;
+}
+
+sub xsearch_tags {
+    my ($ctx, $args, $cond) = @_;
+
+    return '' unless defined $ctx->stash('xsearch_tags');
+    my $tags = $ctx->stash('xsearch_tags');
+    return '' unless scalar @$tags;
+
+    my @res;
+    my $builder = $ctx->stash('builder');
+    my $tokens = $ctx->stash('tokens');
+    foreach (@$tags) {
+	local $ctx->{__stash}{'Tag'} = $_;
+	local $ctx->{__stash}{tag_count} = undef;
+	defined(my $out = $builder->build($ctx, $tokens, $cond))
+	    or return $ctx->error($ctx->errstr);
+	push @res, $out;
+    }
+    my $glue = $args->{glue} || '';
+    join $glue, @res;
+}
+
+sub xsearch_on_stash {
+    my ($ctx, $val, $self) = @_;
+    $ctx->stash('entry', $val);
+    $ctx->{current_timestamp} = $val->created_on;
+    $ctx->{modification_timestamp} = $val->modified_on;
+    $ctx->stash('xsearch_tags', $self->{xsearch_tags});
+}
+
+sub xsearch_on_execute {
+    my ($args, $self) = @_;
+
+    my $blog_id = $args->{blog_id} or MT->error('Blog ID is required.');
+    my $delimiter = $args->{delimiter} || ',';
+    my $sort_by = $args->{sort_by} || 'created_on';
+    my $sort_order = $args->{sort_order} || 'descend';
+    my $lastn = $args->{lastn} || 0;
+
+    my $tags = $args->{search} or MT->error('Search string is required.');
+    my @tag_names = MT::Tag->split($delimiter, $tags)
+	or return [];
+    my $tag_count = scalar @tag_names;
+
+    my @tags = MT::Tag->load_by_datasource(MT::Entry->datasource, {
+	is_private => 0,
+	$blog_id ? (blog_id => $blog_id) : (),
+	name => \@tag_names,
+    });
+    $self->{xsearch_tags} = \@tags;
+    my @tag_ids = map { $_->id } @tags;
+
+    my @eids;
+    if (MT::Object->driver->can('count_group_by')) {
+	my $iter = MT::ObjectTag->count_group_by({
+	    blog_id => $blog_id,
+	    tag_id => \@tag_ids,
+	    object_datasource => MT::Entry->datasource,
+	}, {
+	    group => ['object_id'],
+	});
+	while (my ($count, $object_id) = $iter->()) {
+	    push @eids, $object_id if $count == $tag_count;
+	}
+    } else {
+	my $iter = MT::ObjectTag->load_iter({
+	    blog_id => $blog_id,
+	    tag_id => \@tag_ids,
+	    object_datasource => MT::Entry->datasource,
+	});
+	my %count;
+	while (my $otag = $iter->()) {
+	    $count{$otag->object_id}++;
+	}
+	foreach (keys %count) {
+	    push @eids, $_ if $count{$_} == $tag_count;
+	}
+    }
+    return [] unless scalar @eids;
+
+    my @entries;
+    map { push @entries, MT::Entry->load($_) } @eids;
+    @entries = $sort_order eq 'descend' ?
+	sort { $b->created_on <=> $a->created_on } @entries :
+	sort { $a->created_on <=> $b->created_on } @entries;
+    splice(@entries, $lastn) if $lastn && (scalar @entries > $lastn);
+
+    \@entries;
 }
 
 1;
