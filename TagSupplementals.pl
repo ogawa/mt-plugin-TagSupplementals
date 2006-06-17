@@ -43,6 +43,7 @@ BEGIN {
 	    on_execute => \&xsearch_on_execute,
 	    on_stash => \&xsearch_on_stash,
 	});
+	MT::Template::Context->add_tag(TagXSearchLink => \&tag_xsearch_link);
 	MT::Template::Context->add_container_tag(XSearchTags => \&xsearch_tags);
     }
 }
@@ -176,6 +177,18 @@ sub related_tags {
     }
     my $glue = $args->{glue} || '';
     join $glue, @res;
+}
+
+sub tag_xsearch_link {
+    my ($ctx, $args, $cond) = @_;
+    my $tag = $ctx->stash('Tag') or return '';
+    my $delimiter = $args->{delimiter} || '';
+    my $path = MT::Template::Context->_hdlr_cgi_path($ctx);
+
+    $path . 'mt-xsearch.cgi' . '?blog_id=' . $ctx->stash('blog_id') .
+	'&amp;search_key=TagSupplementals' .
+	($delimiter ? '&amp;delimiter=' . MT::Util::encode_url($delimiter) : '') .
+	'&amp;search=' . MT::Util::encode_url($tag->name);
 }
 
 sub xsearch_tags {
