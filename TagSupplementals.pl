@@ -33,6 +33,7 @@ BEGIN {
     MT->add_plugin($plugin);
     MT::Template::Context->add_tag(EntryTagsCount => \&entry_tags_count);
     MT::Template::Context->add_container_tag(RelatedEntries => \&related_entries);
+    MT::Template::Context->add_container_tag(RelatedTags => \&related_tags);
 
     eval { require MT::XSearch; $HAVE_MT_XSEARCH = 1 };
     if ($HAVE_MT_XSEARCH) {
@@ -137,6 +138,44 @@ sub related_entries {
 	$i++;
     }
     $res;
+}
+
+sub related_tags {
+    my ($ctx, $args, $cond) = @_;
+    my $tag = $ctx->stash('Tag') or return '';
+    my $blog_id = $ctx->stash('blog_id') or return '';
+
+    my @otags = MT::ObjectTag->load({
+	blog_id => $blog_id,
+	tag_id => $tag->id,
+	object_datasource => MT::Entry->datasource,
+    });
+    my @eids = map { $_->object_id } @otags;
+
+    my $iter = MT::Tag->load_iter(undef, {
+	sort => 'name',
+	join => ['MT::ObjectTag', 'tag_id', {
+	    blog_id => $blog_id,
+	    object_id => \@eids,
+	    object_datasource => MT::Entry->datasource,
+	}, {
+	    unique => 1,
+	} ] });
+
+    my @res;
+    my $builder = $ctx->stash('builder');
+    my $tokens = $ctx->stash('tokens');
+    while (my $t = $iter->()) {
+	next if $t->is_private || ($t->id == $tag->id);
+	local $ctx->{__stash}{Tag} = $t;
+	local $ctx->{__stash}{tag_count} = undef;
+	local $ctx->{__stash}{tag_entry_count} = undef;
+	defined(my $out = $builder->build($ctx, $tokens))
+	    or return $ctx->error($ctx->errstr);
+	push @res, $out;
+    }
+    my $glue = $args->{glue} || '';
+    join $glue, @res;
 }
 
 sub xsearch_tags {
