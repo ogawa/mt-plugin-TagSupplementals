@@ -21,19 +21,22 @@ our $HAVE_MT_XSEARCH = 0;
 my $plugin;
 
 BEGIN {
-    our $VERSION = '0.02';
+    our $VERSION = '0.03';
     $plugin = __PACKAGE__->new({
 	name => 'TagSupplementals Plugin',
 	description => 'A plugin for providing supplemental features for MT 3.3 tags.',
-	doc_link => 'http://as-is.net/wiki/TagSupplementals_Plugin',
+	doc_link => 'http://code.as-is.net/wiki/TagSupplementals_Plugin',
 	author_name => 'Hirotaka Ogawa',
 	author_link => 'http://profile.typekey.com/ogawa/',
 	version => $VERSION,
     });
     MT->add_plugin($plugin);
     MT::Template::Context->add_tag(EntryTagsCount => \&entry_tags_count);
+    MT::Template::Context->add_tag(TagLastUpdated => \&tag_last_updated);
     MT::Template::Context->add_container_tag(RelatedEntries => \&related_entries);
     MT::Template::Context->add_container_tag(RelatedTags => \&related_tags);
+    MT::Template::Context->add_global_filter(encode_urlplus => \&encode_urlplus);
+    MT::Template::Context->add_container_tag(SearchTags => \&search_tags);
 
     eval { require MT::XSearch; $HAVE_MT_XSEARCH = 1 };
     if ($HAVE_MT_XSEARCH) {
@@ -54,6 +57,28 @@ sub entry_tags_count {
 	or return $ctx->_no_entry_error('MT' . $ctx->stash('tag'));
     my @tags = $entry->get_tags;
     scalar @tags;
+}
+
+sub tag_last_updated {
+    my ($ctx, $args) = @_;
+    my $tag = $ctx->stash('Tag') or return '';
+    my $blog_id = $ctx->stash('blog_id') or return '';
+
+    my ($e) = MT::Entry->load(undef, {
+	sort => 'created_on',
+	direction => 'descend',
+	limit => 1,
+	join => [ 'MT::ObjectTag', 'object_id', {
+	    tag_id => $tag->id,
+	    blog_id => $blog_id,
+	    object_datasource => MT::Entry->datasource,
+	}, {
+	    unique => 1,
+	} ] })
+	or return '';
+
+    $args->{ts} = $e->created_on;
+    MT::Template::Context::_hdlr_date($ctx, $args);
 }
 
 sub related_entries {
@@ -172,6 +197,38 @@ sub related_tags {
 	local $ctx->{__stash}{tag_count} = undef;
 	local $ctx->{__stash}{tag_entry_count} = undef;
 	defined(my $out = $builder->build($ctx, $tokens))
+	    or return $ctx->error($ctx->errstr);
+	push @res, $out;
+    }
+    my $glue = $args->{glue} || '';
+    join $glue, @res;
+}
+
+sub encode_urlplus {
+    my $s = $_[0];
+    return $s unless $_[1];
+    $s =~ tr/ /+/;
+    MT::Util::encode_url($s);
+}
+
+sub search_tags {
+    my ($ctx, $args, $cond) = @_;
+
+    return '' unless $ctx->stash('search_string') =~ /\S/;
+    my $tags = $ctx->stash('search_string');
+    my @tag_names = MT::Tag->split(',', $tags);
+#    my %tags = map { $_ => 1, MT::Tag->normalize($_) => 1 } @tag_names;
+#    my @tags = MT::Tag->load({ name => [ keys %tags ] });
+    my @tags = MT::Tag->load({ name => @tag_names });
+    return '' unless scalar @tags;
+
+    my @res;
+    my $builder = $ctx->stash('builder');
+    my $tokens = $ctx->stash('tokens');
+    foreach (@tags) {
+	local $ctx->{__stash}{'Tag'} = $_;
+	local $ctx->{__stash}{tag_count} = undef;
+	defined(my $out = $builder->build($ctx, $tokens, $cond))
 	    or return $ctx->error($ctx->errstr);
 	push @res, $out;
     }
