@@ -85,16 +85,16 @@ sub _object_tags {
     my ($blog_id, $tag_id) = @_;
     my $r = MT::Request->instance;
     my $otag_cache = $r->stash('object_tags_cache:' . $blog_id) || {};
-    if (!$otag_cache) {
+    if (!$otag_cache->{$tag_id}) {
 	my @otags = MT::ObjectTag->load({
 	    blog_id => $blog_id,
 	    tag_id => $tag_id,
 	    object_datasource => MT::Entry->datasource,
 	});
-	$otag_cache = \@otags;
+	$otag_cache->{$tag_id} = \@otags;
 	$r->stash('object_tags_cache:' . $blog_id, $otag_cache);
     }
-    $otag_cache;
+    $otag_cache->{$tag_id};
 }
 
 sub related_entries {
@@ -102,7 +102,7 @@ sub related_entries {
     my $entry = $ctx->stash('entry')
 	or return $ctx->_no_entry_error('MT' . $ctx->stash('tag'));
 
-    my $weight = $args->{weight} || 'idf';
+    my $weight = $args->{weight} || 'constant';
     my $lastn = $args->{lastn} || 0;
 
     my $entry_id = $entry->id;
@@ -126,16 +126,7 @@ sub related_entries {
     my @tag_ids = keys %tag_ids;
 
     my %rank;
-    if ($weight eq 'idf') {
-	for my $tag_id (@tag_ids) {
-	    my @otags = _object_tags($blog_id, $tag_id);
-	    next if scalar @otags == 1;
-	    my $rank = 1 / (scalar @otags - 1);
-	    for my $otag (@otags) {
-		$rank{$otag->object_id} += $rank;
-	    }
-	}
-    } elsif ($weight eq 'constant') {
+    if ($weight eq 'constant') {
 	if (MT::Object->driver->can('count_group_by')) {
 	    my $iter = MT::ObjectTag->count_group_by({
 		blog_id => $blog_id,
@@ -157,8 +148,17 @@ sub related_entries {
 		$rank{$otag->object_id}++;
 	    }
 	}
-	delete $rank{$entry_id};
+    } elsif ($weight eq 'idf') {
+	for my $tag_id (@tag_ids) {
+	    my $otags = _object_tags($blog_id, $tag_id);
+	    next if scalar @$otags == 1;
+	    my $rank = 1 / (scalar @$otags - 1);
+	    for my $otag (@$otags) {
+		$rank{$otag->object_id} += $rank;
+	    }
+	}
     }
+    delete $rank{$entry_id};
 
     my @eids = sort { $b <=> $a } keys %rank;
     @eids = sort { $rank{$b} <=> $rank{$a} } @eids;
@@ -199,8 +199,8 @@ sub related_tags {
     my $tag = $ctx->stash('Tag') or return '';
     my $blog_id = $ctx->stash('blog_id') or return '';
 
-    my @otags = _object_tags($blog_id, $tag->id);
-    my @eids = map { $_->object_id } @otags;
+    my $otags = _object_tags($blog_id, $tag->id);
+    my @eids = map { $_->object_id } @$otags;
 
     my $iter = MT::Tag->load_iter(undef, {
 	sort => 'name',
