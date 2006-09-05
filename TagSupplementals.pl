@@ -21,7 +21,7 @@ our $HAVE_MT_XSEARCH = 0;
 my $plugin;
 
 BEGIN {
-    our $VERSION = '0.03';
+    our $VERSION = '0.04';
     $plugin = __PACKAGE__->new({
 	name => 'TagSupplementals Plugin',
 	description => 'A plugin for providing supplemental features for MT 3.3 tags.',
@@ -81,11 +81,28 @@ sub tag_last_updated {
     MT::Template::Context::_hdlr_date($ctx, $args);
 }
 
+sub _object_tags {
+    my ($blog_id, $tag_id) = @_;
+    my $r = MT::Request->instance;
+    my $otag_cache = $r->stash('object_tags_cache:' . $blog_id) || {};
+    if (!$otag_cache) {
+	my @otags = MT::ObjectTag->load({
+	    blog_id => $blog_id,
+	    tag_id => $tag_id,
+	    object_datasource => MT::Entry->datasource,
+	});
+	$otag_cache = \@otags;
+	$r->stash('object_tags_cache:' . $blog_id, $otag_cache);
+    }
+    $otag_cache;
+}
+
 sub related_entries {
     my ($ctx, $args, $cond) = @_;
     my $entry = $ctx->stash('entry')
 	or return $ctx->_no_entry_error('MT' . $ctx->stash('tag'));
 
+    my $weight = $args->{weight} || 'idf';
     my $lastn = $args->{lastn} || 0;
 
     my $entry_id = $entry->id;
@@ -108,32 +125,43 @@ sub related_entries {
     }
     my @tag_ids = keys %tag_ids;
 
-    my %count;
-    if (MT::Object->driver->can('count_group_by')) {
-	my $iter = MT::ObjectTag->count_group_by({
-	    blog_id => $blog_id,
-	    tag_id => \@tag_ids,
-	    object_datasource => MT::Entry->datasource,
-	}, {
-	    group => ['object_id'],
-	});
-	while (my ($count, $object_id) = $iter->()) {
-	    $count{$object_id} = $count;
+    my %rank;
+    if ($weight eq 'idf') {
+	for my $tag_id (@tag_ids) {
+	    my @otags = _object_tags($blog_id, $tag_id);
+	    next if scalar @otags == 1;
+	    my $rank = 1 / (scalar @otags - 1);
+	    for my $otag (@otags) {
+		$rank{$otag->object_id} += $rank;
+	    }
 	}
-    } else {
-	my $iter = MT::ObjectTag->load_iter({
-	    blog_id => $blog_id,
-	    tag_id => \@tag_ids,
-	    object_datasource => MT::Entry->datasource,
-	});
-	while (my $otag = $iter->()) {
-	    $count{$otag->object_id}++;
+    } elsif ($weight eq 'constant') {
+	if (MT::Object->driver->can('count_group_by')) {
+	    my $iter = MT::ObjectTag->count_group_by({
+		blog_id => $blog_id,
+		tag_id => \@tag_ids,
+		object_datasource => MT::Entry->datasource,
+	    }, {
+		group => ['object_id'],
+	    });
+	    while (my ($count, $object_id) = $iter->()) {
+		$rank{$object_id} = $count;
+	    }
+	} else {
+	    my $iter = MT::ObjectTag->load_iter({
+		blog_id => $blog_id,
+		tag_id => \@tag_ids,
+		object_datasource => MT::Entry->datasource,
+	    });
+	    while (my $otag = $iter->()) {
+		$rank{$otag->object_id}++;
+	    }
 	}
+	delete $rank{$entry_id};
     }
-    delete $count{$entry_id};
 
-    my @eids = sort { $b <=> $a } keys %count;
-    @eids = sort { $count{$b} <=> $count{$a} } @eids;
+    my @eids = sort { $b <=> $a } keys %rank;
+    @eids = sort { $rank{$b} <=> $rank{$a} } @eids;
 
     my @entries;
     my $i = 0;
@@ -171,11 +199,7 @@ sub related_tags {
     my $tag = $ctx->stash('Tag') or return '';
     my $blog_id = $ctx->stash('blog_id') or return '';
 
-    my @otags = MT::ObjectTag->load({
-	blog_id => $blog_id,
-	tag_id => $tag->id,
-	object_datasource => MT::Entry->datasource,
-    });
+    my @otags = _object_tags($blog_id, $tag->id);
     my @eids = map { $_->object_id } @otags;
 
     my $iter = MT::Tag->load_iter(undef, {
