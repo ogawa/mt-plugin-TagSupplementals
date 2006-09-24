@@ -15,28 +15,14 @@ use MT::Template::Context;
 use MT::Entry;
 use MT::Tag;
 use MT::ObjectTag;
+use MT::Promise qw(force);
 
 our $HAVE_MT_XSEARCH = 0;
 
 my $plugin;
 
 BEGIN {
-    our $VERSION = '0.04';
-    $plugin = __PACKAGE__->new({
-	name => 'TagSupplementals Plugin',
-	description => 'A plugin for providing supplemental features for MT 3.3 tags.',
-	doc_link => 'http://code.as-is.net/wiki/TagSupplementals_Plugin',
-	author_name => 'Hirotaka Ogawa',
-	author_link => 'http://profile.typekey.com/ogawa/',
-	version => $VERSION,
-    });
-    MT->add_plugin($plugin);
-    MT::Template::Context->add_tag(EntryTagsCount => \&entry_tags_count);
-    MT::Template::Context->add_tag(TagLastUpdated => \&tag_last_updated);
-    MT::Template::Context->add_container_tag(RelatedEntries => \&related_entries);
-    MT::Template::Context->add_container_tag(RelatedTags => \&related_tags);
-    MT::Template::Context->add_global_filter(encode_urlplus => \&encode_urlplus);
-    MT::Template::Context->add_container_tag(SearchTags => \&search_tags);
+    our $VERSION = '0.05';
 
     eval { require MT::XSearch; $HAVE_MT_XSEARCH = 1 };
     if ($HAVE_MT_XSEARCH) {
@@ -46,9 +32,32 @@ BEGIN {
 	    on_execute => \&xsearch_on_execute,
 	    on_stash => \&xsearch_on_stash,
 	});
-	MT::Template::Context->add_tag(TagXSearchLink => \&tag_xsearch_link);
-	MT::Template::Context->add_container_tag(XSearchTags => \&xsearch_tags);
     }
+
+    my $plugin = __PACKAGE__->new({
+	name => 'TagSupplementals Plugin',
+	description => 'A plugin for providing supplemental features for MT 3.3 tags.',
+	doc_link => 'http://code.as-is.net/wiki/TagSupplementals_Plugin',
+	author_name => 'Hirotaka Ogawa',
+	author_link => 'http://profile.typekey.com/ogawa/',
+	version => $VERSION,
+	template_tags => {
+	    EntryTagsCount => \&entry_tags_count,
+	    TagLastUpdated => \&tag_last_updated,
+	    $HAVE_MT_XSEARCH ? (TagXSearchLink => \&tag_xsearch_link) : (),
+	},
+	container_tags => {
+	    RelatedEntries => \&related_entries,
+	    RelatedTags => \&related_tags,
+	    ArchiveTags => \&archive_tags,
+	    SearchTags => \&search_tags,
+	    $HAVE_MT_XSEARCH ? (XSearchTags => \&xsearch_tags) : (),
+	},
+	global_filters => {
+	    encode_urlplus => \&encode_urlplus,
+	},
+    });
+    MT->add_plugin($plugin);
 }
 
 sub entry_tags_count {
@@ -217,6 +226,39 @@ sub related_tags {
     my $tokens = $ctx->stash('tokens');
     while (my $t = $iter->()) {
 	next if $t->is_private || ($t->id == $tag->id);
+	local $ctx->{__stash}{Tag} = $t;
+	local $ctx->{__stash}{tag_count} = undef;
+	local $ctx->{__stash}{tag_entry_count} = undef;
+	defined(my $out = $builder->build($ctx, $tokens))
+	    or return $ctx->error($ctx->errstr);
+	push @res, $out;
+    }
+    my $glue = $args->{glue} || '';
+    join $glue, @res;
+}
+
+sub archive_tags {
+    my ($ctx, $args, $cond) = @_;
+    my $blog_id = $ctx->stash('blog_id') or return '';
+    my $entries = force($ctx->stash('entries')) or return '';
+
+    my @eids = map { $_->id } grep { $_->status == MT::Entry::RELEASE() } @$entries;
+
+    my $iter = MT::Tag->load_iter(undef, {
+	sort => 'name',
+	join => ['MT::ObjectTag', 'tag_id', {
+	    blog_id => $blog_id,
+	    object_id => \@eids,
+	    object_datasource => MT::Entry->datasource,
+	}, {
+	    unique => 1,
+	} ] });
+
+    my @res;
+    my $builder = $ctx->stash('builder');
+    my $tokens = $ctx->stash('tokens');
+    while (my $t = $iter->()) {
+	next if $t->is_private;
 	local $ctx->{__stash}{Tag} = $t;
 	local $ctx->{__stash}{tag_count} = undef;
 	local $ctx->{__stash}{tag_entry_count} = undef;
