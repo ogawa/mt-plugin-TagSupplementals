@@ -22,7 +22,7 @@ our $HAVE_MT_XSEARCH = 0;
 my $plugin;
 
 BEGIN {
-    our $VERSION = '0.05';
+    our $VERSION = '0.06';
 
     eval { require MT::XSearch; $HAVE_MT_XSEARCH = 1 };
     if ($HAVE_MT_XSEARCH) {
@@ -36,26 +36,28 @@ BEGIN {
 
     my $plugin = __PACKAGE__->new({
 	name => 'TagSupplementals Plugin',
-	description => 'A plugin for providing supplemental features for MT 3.3 tags.',
+	description => 'A plugin for providing supplemental "tag" features for MT 3.3+',
 	doc_link => 'http://code.as-is.net/wiki/TagSupplementals_Plugin',
 	author_name => 'Hirotaka Ogawa',
 	author_link => 'http://profile.typekey.com/ogawa/',
 	version => $VERSION,
-	tags => {
-	    block => {
-		RelatedEntries => \&related_entries,
-		RelatedTags => \&related_tags,
-		ArchiveTags => \&archive_tags,
-		SearchTags => \&search_tags,
-		$HAVE_MT_XSEARCH ? (XSearchTags => \&xsearch_tags) : (),
-	    },
-	    function => {
-		EntryTagsCount => \&entry_tags_count,
-		TagLastUpdated => \&tag_last_updated,
-		$HAVE_MT_XSEARCH ? (TagXSearchLink => \&tag_xsearch_link) : (),
-	    },
-	    modifier => {
-		encode_urlplus => \&encode_urlplus,
+	registry => {
+	    tags => {
+		block => {
+		    RelatedEntries => \&related_entries,
+		    RelatedTags => \&related_tags,
+		    ArchiveTags => \&archive_tags,
+		    SearchTags => \&search_tags,
+		    $HAVE_MT_XSEARCH ? (XSearchTags => \&xsearch_tags) : (),
+		},
+		function => {
+		    EntryTagsCount => \&entry_tags_count,
+		    TagLastUpdated => \&tag_last_updated,
+		    $HAVE_MT_XSEARCH ? (TagXSearchLink => \&tag_xsearch_link) : (),
+		},
+		modifier => {
+		    encode_urlplus => \&encode_urlplus,
+		},
 	    },
 	},
 	template_tags => {
