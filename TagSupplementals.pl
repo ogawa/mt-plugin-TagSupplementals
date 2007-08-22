@@ -41,6 +41,23 @@ BEGIN {
 	author_name => 'Hirotaka Ogawa',
 	author_link => 'http://profile.typekey.com/ogawa/',
 	version => $VERSION,
+	tags => {
+	    block => {
+		RelatedEntries => \&related_entries,
+		RelatedTags => \&related_tags,
+		ArchiveTags => \&archive_tags,
+		SearchTags => \&search_tags,
+		$HAVE_MT_XSEARCH ? (XSearchTags => \&xsearch_tags) : (),
+	    },
+	    function => {
+		EntryTagsCount => \&entry_tags_count,
+		TagLastUpdated => \&tag_last_updated,
+		$HAVE_MT_XSEARCH ? (TagXSearchLink => \&tag_xsearch_link) : (),
+	    },
+	    modifier => {
+		encode_urlplus => \&encode_urlplus,
+	    },
+	},
 	template_tags => {
 	    EntryTagsCount => \&entry_tags_count,
 	    TagLastUpdated => \&tag_last_updated,
