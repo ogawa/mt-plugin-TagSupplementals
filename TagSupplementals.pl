@@ -132,7 +132,9 @@ sub related_entries {
 
     my $weight = $args->{weight} || 'constant';
     my $lastn = $args->{lastn} || 0;
-
+    my $offset = $args->{offset} || 0;
+    $lastn += $offset;
+	
     my $entry_id = $entry->id;
     my $blog_id = $entry->blog_id;
     my @tags = MT::Tag->load(undef, {
@@ -196,6 +198,7 @@ sub related_entries {
     foreach (@eids) {
 	my $e = MT::Entry->load($_);
 	if ($e->status == MT::Entry::RELEASE()) {
+	    next if $i < $offset;
 	    push @entries, $e;
 	    $i++;
 	    last if $lastn && $i >= $lastn;
