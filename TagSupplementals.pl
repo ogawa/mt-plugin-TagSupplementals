@@ -4,7 +4,7 @@
 # This software is provided as-is. You may use it for commercial or 
 # personal use. If you distribute it, please keep this notice intact.
 #
-# Copyright (c) 2006 Hirotaka Ogawa
+# Copyright (c) 2006-2008 Hirotaka Ogawa
 
 package MT::Plugin::TagSupplementals;
 use strict;
@@ -99,11 +99,11 @@ sub tag_last_updated {
         direction => 'descend',
         limit     => 1,
         join      => [ 'MT::ObjectTag', 'object_id', {
-	    %blog_terms,
+            %blog_terms,
             tag_id            => $tag->id,
             object_datasource => MT::Entry->datasource,
         }, {
-	    %blog_args,
+            %blog_args,
             unique            => 1,
         } ] })
         or return '';
@@ -146,11 +146,11 @@ sub related_entries {
     my @tags = MT::Tag->load(undef, {
         sort => 'name',
         join => [ 'MT::ObjectTag', 'tag_id', {
-	    %blog_terms,
+            %blog_terms,
             object_id         => $entry_id,
             object_datasource => MT::Entry->datasource,
         }, {
-	    %blog_args,
+            %blog_args,
             unique            => 1,
         } ] })
         or return '';
@@ -166,11 +166,11 @@ sub related_entries {
     if ($weight eq 'constant') {
         if (MT::Object->driver->can('count_group_by')) {
             my $iter = MT::ObjectTag->count_group_by({
-		%blog_terms,
+                %blog_terms,
                 tag_id            => \@tag_ids,
                 object_datasource => MT::Entry->datasource,
             }, {
-		%blog_args,
+                %blog_args,
                 group             => ['object_id'],
             });
             while (my ($count, $object_id) = $iter->()) {
@@ -178,11 +178,11 @@ sub related_entries {
             }
         } else {
             my $iter = MT::ObjectTag->load_iter({
-		%blog_terms,
+                %blog_terms,
                 tag_id            => \@tag_ids,
                 object_datasource => MT::Entry->datasource,
             }, {
-		%blog_args,
+                %blog_args,
             });
             while (my $otag = $iter->()) {
                 $rank{$otag->object_id}++;
@@ -190,13 +190,13 @@ sub related_entries {
         }
     } elsif ($weight eq 'idf') {
         for my $tag_id (@tag_ids) {
-	    my @otags = MT::ObjectTag->load({
-		%blog_terms,
-		tag_id => $tag_id,
-		object_datasource => MT::Entry->datasource,
-	    }, {
-		%blog_args,
-	    });
+            my @otags = MT::ObjectTag->load({
+                %blog_terms,
+                tag_id => $tag_id,
+                object_datasource => MT::Entry->datasource,
+            }, {
+                %blog_args,
+            });
             next if scalar @otags == 1;
             my $rank = 1 / (scalar @otags - 1);
             for my $otag (@otags) {
@@ -249,22 +249,22 @@ sub related_tags {
         or return $ctx->error($ctx->errstr);
 
     my @otags = MT::ObjectTag->load({
-	%blog_terms,
-	tag_id            => $tag_id,
-	object_datasource => MT::Entry->datasource,
+        %blog_terms,
+        tag_id            => $tag_id,
+        object_datasource => MT::Entry->datasource,
     }, {
-	%blog_args,
+        %blog_args,
     });
     my @eids = map { $_->object_id } @otags;
 
     my $iter = MT::Tag->load_iter(undef, {
         sort => 'name',
         join => ['MT::ObjectTag', 'tag_id', {
-	    %blog_terms,
+            %blog_terms,
             object_id         => \@eids,
             object_datasource => MT::Entry->datasource,
         }, {
-	    %blog_args,
+            %blog_args,
             unique            => 1,
         } ] });
 
@@ -296,11 +296,11 @@ sub archive_tags {
     my $iter = MT::Tag->load_iter(undef, {
         sort => 'name',
         join => ['MT::ObjectTag', 'tag_id', {
-	    %blog_terms,
+            %blog_terms,
             object_id         => \@eids,
             object_datasource => MT::Entry->datasource,
         }, {
-	    %blog_args,
+            %blog_args,
             unique            => 1,
         } ] });
 
