@@ -19,10 +19,10 @@ our $HAVE_MT_XSEARCH = 0;
     eval { require MT::XSearch; $HAVE_MT_XSEARCH = 1 };
     if ($HAVE_MT_XSEARCH) {
         MT::XSearch->add_search_plugin('TagSupplementals', {
-            label => 'Tag Search',
+            label       => 'Tag Search',
             description => 'Tag Search plugin for MT-XSearch',
-            on_execute => \&xsearch_on_execute,
-            on_stash => \&xsearch_on_stash,
+            on_execute  => \&xsearch_on_execute,
+            on_stash    => \&xsearch_on_stash,
         });
     }
 }
@@ -95,21 +95,21 @@ sub tag_last_updated {
     MT::Template::Context::_hdlr_date($ctx, $args);
 }
 
-sub _object_tags {
-    my ($blog_id, $tag_id) = @_;
-    my $r = MT::Request->instance;
-    my $otag_cache = $r->stash('object_tags_cache:' . $blog_id) || {};
-    if (!$otag_cache->{$tag_id}) {
-        my @otags = MT::ObjectTag->load({
-            blog_id           => $blog_id,
-            tag_id            => $tag_id,
-            object_datasource => MT::Entry->datasource,
-        });
-        $otag_cache->{$tag_id} = \@otags;
-        $r->stash('object_tags_cache:' . $blog_id, $otag_cache);
-    }
-    $otag_cache->{$tag_id};
-}
+#sub _object_tags {
+#    my ($blog_id, $tag_id) = @_;
+#    my $r = MT::Request->instance;
+#    my $otag_cache = $r->stash('object_tags_cache:' . $blog_id) || {};
+#    if (!$otag_cache->{$tag_id}) {
+#        my @otags = MT::ObjectTag->load({
+#            blog_id           => $blog_id,
+#            tag_id            => $tag_id,
+#            object_datasource => MT::Entry->datasource,
+#        });
+#        $otag_cache->{$tag_id} = \@otags;
+#        $r->stash('object_tags_cache:' . $blog_id, $otag_cache);
+#    }
+#    $otag_cache->{$tag_id};
+#}
 
 sub related_entries {
     my ($ctx, $args, $cond) = @_;
