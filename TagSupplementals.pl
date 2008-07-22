@@ -8,22 +8,14 @@
 
 package MT::Plugin::TagSupplementals;
 use strict;
-use MT;
+use warnings;
+
+use MT 4;
 use base qw(MT::Plugin);
 
-use MT::Template::Context;
-use MT::Entry;
-use MT::Tag;
-use MT::ObjectTag;
-use MT::Promise qw(force);
-
+our $VERSION = '0.10';
 our $HAVE_MT_XSEARCH = 0;
-
-my $plugin;
-
-BEGIN {
-    our $VERSION = '0.10';
-
+{
     eval { require MT::XSearch; $HAVE_MT_XSEARCH = 1 };
     if ($HAVE_MT_XSEARCH) {
         MT::XSearch->add_search_plugin('TagSupplementals', {
@@ -33,51 +25,42 @@ BEGIN {
             on_stash => \&xsearch_on_stash,
         });
     }
+}
 
-    my $plugin = __PACKAGE__->new({
-        name           => 'TagSupplementals',
-        description    => 'A plugin for providing supplemental "tag" features for MT 3.3+',
-        doc_link       => 'http://code.as-is.net/public/wiki/TagSupplementals_Plugin',
-        author_name    => 'Hirotaka Ogawa',
-        author_link    => 'http://profile.typekey.com/ogawa/',
-        version        => $VERSION,
-        registry       => {
-            tags => {
-                block    => {
-                    RelatedEntries => \&related_entries,
-                    RelatedTags    => \&related_tags,
-                    ArchiveTags    => \&archive_tags,
-                    SearchTags     => \&search_tags,
-                    $HAVE_MT_XSEARCH ? (XSearchTags => \&xsearch_tags) : (),
-                },
-                function => {
-                    EntryTagsCount => \&entry_tags_count,
-                    TagLastUpdated => \&tag_last_updated,
-                    $HAVE_MT_XSEARCH ? (TagXSearchLink => \&tag_xsearch_link) : (),
-                },
-                modifier => {
-                    encode_urlplus => \&encode_urlplus,
-                },
+my $plugin = __PACKAGE__->new({
+    name           => 'TagSupplementals',
+    description    => 'A plugin for providing supplemental "tag" features for MT4',
+    doc_link       => 'http://code.as-is.net/public/wiki/TagSupplementals_Plugin',
+    author_name    => 'Hirotaka Ogawa',
+    author_link    => 'http://profile.typekey.com/ogawa/',
+    version        => $VERSION,
+    registry       => {
+        tags => {
+            block    => {
+                RelatedEntries => \&related_entries,
+                RelatedTags    => \&related_tags,
+                ArchiveTags    => \&archive_tags,
+                SearchTags     => \&search_tags,
+                $HAVE_MT_XSEARCH ? (XSearchTags => \&xsearch_tags) : (),
+            },
+            function => {
+                EntryTagsCount => \&entry_tags_count,
+                TagLastUpdated => \&tag_last_updated,
+                $HAVE_MT_XSEARCH ? (TagXSearchLink => \&tag_xsearch_link) : (),
+            },
+            modifier => {
+                encode_urlplus => \&encode_urlplus,
             },
         },
-        template_tags  => {
-            EntryTagsCount => \&entry_tags_count,
-            TagLastUpdated => \&tag_last_updated,
-            $HAVE_MT_XSEARCH ? (TagXSearchLink => \&tag_xsearch_link) : (),
-        },
-        container_tags => {
-            RelatedEntries => \&related_entries,
-            RelatedTags    => \&related_tags,
-            ArchiveTags    => \&archive_tags,
-            SearchTags     => \&search_tags,
-            $HAVE_MT_XSEARCH ? (XSearchTags => \&xsearch_tags) : (),
-        },
-        global_filters => {
-            encode_urlplus => \&encode_urlplus,
-        },
-    });
-    MT->add_plugin($plugin);
-}
+    }
+});
+MT->add_plugin($plugin);
+
+use MT::Template::Context;
+use MT::Entry;
+use MT::Tag;
+use MT::ObjectTag;
+use MT::Promise qw(force);
 
 sub entry_tags_count {
     my $ctx = shift;
@@ -206,6 +189,7 @@ sub related_entries {
     }
     delete $rank{$entry_id};
 
+    # sort by entry_id, and then sort by rank
     my @eids = sort { $b <=> $a } keys %rank;
     @eids = sort { $rank{$b} <=> $rank{$a} } @eids;
 
@@ -250,7 +234,7 @@ sub related_tags {
 
     my @otags = MT::ObjectTag->load({
         %blog_terms,
-        tag_id            => $tag_id,
+        tag_id            => $tag->id,
         object_datasource => MT::Entry->datasource,
     }, {
         %blog_args,
@@ -323,8 +307,9 @@ sub archive_tags {
 sub encode_urlplus {
     my $s = $_[0];
     return $s unless $_[1];
+    $s =~ s!([^ a-zA-Z0-9_.~-])!uc sprintf "%%%02x", ord($1)!eg;
     $s =~ tr/ /+/;
-    MT::Util::encode_url($s);
+    $s;
 }
 
 sub search_tags {
