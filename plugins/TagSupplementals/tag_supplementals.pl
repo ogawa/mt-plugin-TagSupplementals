@@ -22,10 +22,9 @@ our $HAVE_MT_XSEARCH = 0;
 
 my $plugin = __PACKAGE__->new(
     {
-        id   => 'tag_supplementals',
-        name => 'TagSupplementals',
-        description =>
-          'A plugin for providing supplemental "tag" features for MT4',
+        id          => 'tag_supplementals',
+        name        => 'TagSupplementals',
+        description => 'Supplemental "tag" features for MT4',
         doc_link => 'http://code.as-is.net/public/wiki/TagSupplementals_Plugin',
         author_name => 'Hirotaka Ogawa',
         author_link => 'http://as-is.net/blog/',
@@ -37,28 +36,29 @@ MT->add_plugin($plugin);
 sub instance { $plugin }
 
 sub init_registry {
-    my $plugin = shift;
-    my $pkg    = 'TagSupplementals::';
+    my $plugin      = shift;
+    my $core_pkg    = 'TagSupplementals::';
+    my $xsearch_pkg = 'TagSupplementals::XSearch::';
     $plugin->registry(
         {
             tags => {
                 block => {
-                    RelatedEntries => $pkg . 'related_entries',
-                    RelatedTags    => $pkg . 'related_tags',
-                    ArchiveTags    => $pkg . 'archive_tags',
-                    SearchTags     => $pkg . 'search_tags',
+                    RelatedEntries => $core_pkg . 'related_entries',
+                    RelatedTags    => $core_pkg . 'related_tags',
+                    ArchiveTags    => $core_pkg . 'archive_tags',
+                    SearchTags     => $core_pkg . 'search_tags',
                     $HAVE_MT_XSEARCH
-                    ? ( XSearchTags => $pkg . 'XSearch::xsearch_tags' )
+                    ? ( XSearchTags => $xsearch_pkg . 'xsearch_tags' )
                     : (),
                 },
                 function => {
-                    EntryTagsCount => $pkg . 'entry_tags_count',
-                    TagLastUpdated => $pkg . 'tag_last_updated',
+                    EntryTagsCount => $core_pkg . 'entry_tags_count',
+                    TagLastUpdated => $core_pkg . 'tag_last_updated',
                     $HAVE_MT_XSEARCH
-                    ? ( TagXSearchLink => $pkg . 'XSearch::tag_xsearch_link' )
+                    ? ( TagXSearchLink => $xsearch_pkg . 'tag_xsearch_link' )
                     : (),
                 },
-                modifier => { encode_urlplus => $pkg . 'encode_urlplus', },
+                modifier => { encode_urlplus => $core_pkg . 'encode_urlplus', },
             },
         }
     );
