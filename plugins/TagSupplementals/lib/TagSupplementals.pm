@@ -46,22 +46,6 @@ sub tag_last_updated {
     MT::Template::Context::_hdlr_date( $ctx, $args );
 }
 
-#sub _object_tags {
-#    my ($blog_id, $tag_id) = @_;
-#    my $r = MT::Request->instance;
-#    my $otag_cache = $r->stash('object_tags_cache:' . $blog_id) || {};
-#    if (!$otag_cache->{$tag_id}) {
-#        my @otags = MT::ObjectTag->load({
-#            blog_id           => $blog_id,
-#            tag_id            => $tag_id,
-#            object_datasource => MT::Entry->datasource,
-#        });
-#        $otag_cache->{$tag_id} = \@otags;
-#        $r->stash('object_tags_cache:' . $blog_id, $otag_cache);
-#    }
-#    $otag_cache->{$tag_id};
-#}
-
 sub related_entries {
     my ( $ctx, $args, $cond ) = @_;
     my $entry = $ctx->stash('entry')
@@ -72,64 +56,32 @@ sub related_entries {
     my $offset = $args->{offset} || 0;
     $lastn += $offset;
 
-    my $entry_id = $entry->id;
+    my %tag_ids;
+    foreach ( @{ $entry->get_tag_objects } ) {
+        $tag_ids{ $_->id } = 1;
+        my @more = MT::Tag->load( { n8d_id => $_->n8d_id || $_->id } );
+        $tag_ids{ $_->id } = 1 foreach @more;
+    }
+    my @tag_ids = keys %tag_ids
+      or return '';
+
     my ( %blog_terms, %blog_args );
     $ctx->set_blog_load_context( $args, \%blog_terms, \%blog_args )
       or return $ctx->error( $ctx->errstr );
 
-    my @tags = MT::Tag->load(
-        undef,
-        {
-            sort => 'name',
-            join => [
-                'MT::ObjectTag',
-                'tag_id',
-                {
-                    %blog_terms,
-                    object_id         => $entry_id,
-                    object_datasource => MT::Entry->datasource,
-                },
-                { %blog_args, unique => 1, }
-            ]
-        }
-    ) or return '';
-    my %tag_ids;
-
-    foreach (@tags) {
-        $tag_ids{ $_->id } = 1;
-        my @more =
-          MT::Tag->load( { n8d_id => $_->n8d_id ? $_->n8d_id : $_->id } );
-        $tag_ids{ $_->id } = 1 foreach @more;
-    }
-    my @tag_ids = keys %tag_ids;
-
+    # calculate coocurrence vector
     my %rank;
     if ( $weight eq 'constant' ) {
-        if ( MT::Object->driver->can('count_group_by') ) {
-            my $iter = MT::ObjectTag->count_group_by(
-                {
-                    %blog_terms,
-                    tag_id            => \@tag_ids,
-                    object_datasource => MT::Entry->datasource,
-                },
-                { %blog_args, group => ['object_id'], }
-            );
-            while ( my ( $count, $object_id ) = $iter->() ) {
-                $rank{$object_id} = $count;
-            }
-        }
-        else {
-            my $iter = MT::ObjectTag->load_iter(
-                {
-                    %blog_terms,
-                    tag_id            => \@tag_ids,
-                    object_datasource => MT::Entry->datasource,
-                },
-                { %blog_args, }
-            );
-            while ( my $otag = $iter->() ) {
-                $rank{ $otag->object_id }++;
-            }
+        my $iter = MT::ObjectTag->count_group_by(
+            {
+                %blog_terms,
+                tag_id            => \@tag_ids,
+                object_datasource => MT::Entry->datasource,
+            },
+            { %blog_args, group => ['object_id'], }
+        );
+        while ( my ( $count, $object_id ) = $iter->() ) {
+            $rank{$object_id} = $count;
         }
     }
     elsif ( $weight eq 'idf' ) {
@@ -140,16 +92,15 @@ sub related_entries {
                     tag_id            => $tag_id,
                     object_datasource => MT::Entry->datasource,
                 },
-                { %blog_args, }
+                \%blog_args
             );
-            next if scalar @otags == 1;
-            my $rank = 1 / ( scalar @otags - 1 );
-            for my $otag (@otags) {
-                $rank{ $otag->object_id } += $rank;
-            }
+            my $rank = scalar @otags - 1;
+            next if $rank < 1;
+            $rank = 1 / $rank;
+            $rank{ $_->object_id } += $rank foreach @otags;
         }
     }
-    delete $rank{$entry_id};
+    delete $rank{ $entry->id };
 
     # sort by entry_id, and then sort by rank
     my @eids = sort { $b <=> $a } keys %rank;
