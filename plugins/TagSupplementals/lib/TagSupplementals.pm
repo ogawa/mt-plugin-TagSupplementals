@@ -11,9 +11,8 @@ use MT::Promise qw( force );
 sub entry_tags_count {
     my $ctx   = shift;
     my $entry = $ctx->stash('entry')
-      or return $ctx->_no_entry_error( 'MT' . $ctx->stash('tag') );
-    my @tags = $entry->get_tags;
-    scalar @tags;
+      or return $ctx->_no_entry_error();
+    scalar $entry->get_tags;
 }
 
 sub tag_last_updated {
@@ -23,7 +22,7 @@ sub tag_last_updated {
     $ctx->set_blog_load_context( $args, \%blog_terms, \%blog_args )
       or return $ctx->error( $ctx->errstr );
 
-    my ($e) = MT::Entry->load(
+    my $e = MT::Entry->load(
         undef,
         {
             sort      => 'created_on',
@@ -49,7 +48,7 @@ sub tag_last_updated {
 sub related_entries {
     my ( $ctx, $args, $cond ) = @_;
     my $entry = $ctx->stash('entry')
-      or return $ctx->_no_entry_error( 'MT' . $ctx->stash('tag') );
+      or return $ctx->_no_entry_error();
 
     my $weight = $args->{weight} || 'constant';
     my $lastn  = $args->{lastn}  || 0;
@@ -119,6 +118,7 @@ sub related_entries {
     }
 
     my $res     = '';
+    my $glue    = $args->{glue};
     my $tokens  = $ctx->stash('tokens');
     my $builder = $ctx->stash('builder');
     $i = 0;
@@ -126,15 +126,18 @@ sub related_entries {
         local $ctx->{__stash}{entry}         = $e;
         local $ctx->{current_timestamp}      = $e->created_on;
         local $ctx->{modification_timestamp} = $e->modified_on;
-        my $out = $builder->build(
-            $ctx, $tokens,
-            {
-                %$cond,
-                EntriesHeader => !$i,
-                EntriesFooter => !defined $entries[ $i + 1 ],
-            }
-        );
+        defined(
+            my $out = $builder->build(
+                $ctx, $tokens,
+                {
+                    %$cond,
+                    EntriesHeader => !$i,
+                    EntriesFooter => !defined $entries[ $i + 1 ],
+                }
+            )
+        ) or return $ctx->error( $ctx->errstr );
         return $ctx->error( $ctx->errstr ) unless defined $out;
+        $res .= $glue if defined $glue && length($res) && length($out);
         $res .= $out;
         $i++;
     }
@@ -154,7 +157,7 @@ sub related_tags {
             tag_id            => $tag->id,
             object_datasource => MT::Entry->datasource,
         },
-        { %blog_args, }
+        \%blog_args
     );
     my @eids = map { $_->object_id } @otags;
 
@@ -175,7 +178,8 @@ sub related_tags {
         }
     );
 
-    my @res;
+    my $res     = '';
+    my $glue    = $args->{glue};
     my $builder = $ctx->stash('builder');
     my $tokens  = $ctx->stash('tokens');
     while ( my $t = $iter->() ) {
@@ -185,10 +189,10 @@ sub related_tags {
         local $ctx->{__stash}{tag_entry_count} = undef;
         defined( my $out = $builder->build( $ctx, $tokens ) )
           or return $ctx->error( $ctx->errstr );
-        push @res, $out;
+        $res .= $glue if defined $glue && length($res) && length($out);
+        $res .= $out;
     }
-    my $glue = $args->{glue} || '';
-    join $glue, @res;
+    $res;
 }
 
 sub archive_tags {
@@ -218,7 +222,8 @@ sub archive_tags {
         }
     );
 
-    my @res;
+    my $res     = '';
+    my $glue    = $args->{glue};
     my $builder = $ctx->stash('builder');
     my $tokens  = $ctx->stash('tokens');
     while ( my $t = $iter->() ) {
@@ -228,18 +233,10 @@ sub archive_tags {
         local $ctx->{__stash}{tag_entry_count} = undef;
         defined( my $out = $builder->build( $ctx, $tokens ) )
           or return $ctx->error( $ctx->errstr );
-        push @res, $out;
+        $res .= $glue if defined $glue && length($res) && length($out);
+        $res .= $out;
     }
-    my $glue = $args->{glue} || '';
-    join $glue, @res;
-}
-
-sub encode_urlplus {
-    my $s = $_[0];
-    return $s unless $_[1];
-    $s =~ s!([^ a-zA-Z0-9_.~-])!uc sprintf "%%%02x", ord($1)!eg;
-    $s =~ tr/ /+/;
-    $s;
+    $res;
 }
 
 sub search_tags {
@@ -254,7 +251,8 @@ sub search_tags {
     my @tags = MT::Tag->load( { name => @tag_names } );
     return '' unless scalar @tags;
 
-    my @res;
+    my $res     = '';
+    my $glue    = $args->{glue};
     my $builder = $ctx->stash('builder');
     my $tokens  = $ctx->stash('tokens');
     foreach (@tags) {
@@ -262,10 +260,18 @@ sub search_tags {
         local $ctx->{__stash}{tag_count} = undef;
         defined( my $out = $builder->build( $ctx, $tokens, $cond ) )
           or return $ctx->error( $ctx->errstr );
-        push @res, $out;
+        $res .= $glue if defined $glue && length($res) && length($out);
+        $res .= $out;
     }
-    my $glue = $args->{glue} || '';
-    join $glue, @res;
+    $res;
+}
+
+sub encode_urlplus {
+    my $s = $_[0];
+    return $s unless $_[1];
+    $s =~ s!([^ a-zA-Z0-9_.~-])!uc sprintf "%%%02x", ord($1)!eg;
+    $s =~ tr/ /+/;
+    $s;
 }
 
 1;
