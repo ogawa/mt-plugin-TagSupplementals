@@ -51,7 +51,7 @@ sub __tag_coocurrence_cache_key {
     sprintf "%stag-coocurrence-%d", $obj->datasource, $obj->id;
 }
 
-use constant TAG_COOCURRENCE_CACHE_TIME => 7 * 24 * 60 * 60;    ## 1 week
+sub TAG_COOCURRENCE_CACHE_TIME () { 604800 }    ## 7 * 24 * 60 * 60 == 1 week
 
 sub __get_tag_coocurrence {
     my ( $entry, $ctx, $args ) = @_;
