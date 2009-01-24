@@ -45,15 +45,28 @@ sub tag_last_updated {
     MT::Template::Context::_hdlr_date( $ctx, $args );
 }
 
-sub related_entries {
-    my ( $ctx, $args, $cond ) = @_;
-    my $entry = $ctx->stash('entry')
-      or return $ctx->_no_entry_error();
+sub __tag_coocurrence_cache_key {
+    my $obj = shift;
+    return undef unless $obj->id;
+    sprintf "%stag-coocurrence-%d", $obj->datasource, $obj->id;
+}
 
-    my $weight = $args->{weight} || 'constant';
-    my $lastn  = $args->{lastn}  || 0;
-    my $offset = $args->{offset} || 0;
-    $lastn += $offset;
+use constant TAG_COOCURRENCE_CACHE_TIME => 7 * 24 * 60 * 60;    ## 1 week
+
+sub __get_tag_coocurrence {
+    my ( $entry, $ctx, $args ) = @_;
+    return $entry->{__coocurrence} if $entry->{__coocurrence};
+
+    require MT::Memcached;
+    my $cache  = MT::Memcached->instance;
+    my $memkey = __tag_coocurrence_cache_key($entry);
+    if ( my $rank = $cache->get($memkey) ) {
+        $entry->{__coocurrence} = $rank;
+        return $rank;
+    }
+
+    # calculate coocurrence vector (rank)
+    my %rank;
 
     my %tag_ids;
     foreach ( @{ $entry->get_tag_objects } ) {
@@ -61,45 +74,61 @@ sub related_entries {
         my @more = MT::Tag->load( { n8d_id => $_->n8d_id || $_->id } );
         $tag_ids{ $_->id } = 1 foreach @more;
     }
-    my @tag_ids = keys %tag_ids
-      or return '';
 
-    my ( %blog_terms, %blog_args );
-    $ctx->set_blog_load_context( $args, \%blog_terms, \%blog_args )
-      or return $ctx->error( $ctx->errstr );
+    if ( my @tag_ids = keys %tag_ids ) {
+        my ( %blog_terms, %blog_args );
+        $ctx->set_blog_load_context( $args, \%blog_terms, \%blog_args )
+          or return $ctx->error( $ctx->errstr );
 
-    # calculate coocurrence vector
-    my %rank;
-    if ( $weight eq 'constant' ) {
-        my $iter = MT::ObjectTag->count_group_by(
-            {
-                %blog_terms,
-                tag_id            => \@tag_ids,
-                object_datasource => MT::Entry->datasource,
-            },
-            { %blog_args, group => ['object_id'], }
-        );
-        while ( my ( $count, $object_id ) = $iter->() ) {
-            $rank{$object_id} = $count;
-        }
-    }
-    elsif ( $weight eq 'idf' ) {
-        for my $tag_id (@tag_ids) {
-            my @otags = MT::ObjectTag->load(
+        my $weight = $args->{weight} || 'constant';
+        if ( $weight eq 'constant' ) {
+            my $iter = MT::ObjectTag->count_group_by(
                 {
                     %blog_terms,
-                    tag_id            => $tag_id,
+                    tag_id            => \@tag_ids,
                     object_datasource => MT::Entry->datasource,
                 },
-                \%blog_args
+                { %blog_args, group => ['object_id'], }
             );
-            my $rank = scalar @otags - 1;
-            next if $rank < 1;
-            $rank = 1 / $rank;
-            $rank{ $_->object_id } += $rank foreach @otags;
+            while ( my ( $count, $object_id ) = $iter->() ) {
+                $rank{$object_id} = $count;
+            }
         }
+        elsif ( $weight eq 'idf' ) {
+            for my $tag_id (@tag_ids) {
+                my @otags = MT::ObjectTag->load(
+                    {
+                        %blog_terms,
+                        tag_id            => $tag_id,
+                        object_datasource => MT::Entry->datasource,
+                    },
+                    \%blog_args
+                );
+                my $rank = scalar @otags - 1;
+                next if $rank < 1;
+                $rank = 1 / $rank;
+                $rank{ $_->object_id } += $rank foreach @otags;
+            }
+        }
+        delete $rank{ $entry->id };
     }
-    delete $rank{ $entry->id };
+
+    $cache->set( $memkey, \%rank, TAG_COOCURRENCE_CACHE_TIME );
+    $entry->{__coocurrence} = \%rank;
+    \%rank;
+}
+
+sub related_entries {
+    my ( $ctx, $args, $cond ) = @_;
+    my $entry = $ctx->stash('entry')
+      or return $ctx->_no_entry_error();
+    my $rank = __get_tag_coocurrence( $entry, $ctx, $args )
+      or return $ctx->error( $ctx->errstr );
+    my %rank = %$rank;
+
+    my $lastn  = $args->{lastn}  || 0;
+    my $offset = $args->{offset} || 0;
+    $lastn += $offset;
 
     # sort by entry_id, and then sort by rank
     my @eids = sort { $b <=> $a } keys %rank;
@@ -109,7 +138,7 @@ sub related_entries {
     my $i = 0;
     for my $eid (@eids) {
         my $e = MT::Entry->load($eid);
-        if ( $e->status == MT::Entry::RELEASE() ) {
+        if ( $e && $e->status == MT::Entry::RELEASE() ) {
             next if $i < $offset;
             push @entries, $e;
             $i++;
