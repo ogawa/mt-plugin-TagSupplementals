@@ -188,6 +188,14 @@ sub related_entries {
     my @eids = sort { $b <=> $a } keys %rank;
     @eids = sort { $rank{$b} <=> $rank{$a} } @eids;
 
+    # Bug? lookup_multi never seems to return objects in the same order
+    # as the IDs passed in.
+    #    my @entries =
+    #      grep { defined $_ && $_->status == MT::Entry::RELEASE() }
+    #      @{ MT::Entry->lookup_multi( \@eids ) };
+    #    splice @entries, $offset if $offset;
+    #    splice @entries, 0, $lastn if $lastn;
+
     my @entries;
     my $i = 0;
     for my $eid (@eids) {
@@ -245,7 +253,10 @@ sub related_tags {
     my @eids = map { $_->object_id } @otags;
 
     my $iter = MT::Tag->load_iter(
-        undef,
+        {
+            not        => { id => $tag->id },
+            is_private => 0,
+        },
         {
             sort => 'name',
             join => [
@@ -266,7 +277,6 @@ sub related_tags {
     my $builder = $ctx->stash('builder');
     my $tokens  = $ctx->stash('tokens');
     while ( my $t = $iter->() ) {
-        next if $t->is_private || ( $t->id == $tag->id );
         local $ctx->{__stash}{Tag}             = $t;
         local $ctx->{__stash}{tag_count}       = undef;
         local $ctx->{__stash}{tag_entry_count} = undef;
@@ -289,7 +299,7 @@ sub archive_tags {
       map { $_->id } grep { $_->status == MT::Entry::RELEASE() } @$entries;
 
     my $iter = MT::Tag->load_iter(
-        undef,
+        { is_private => 0 },
         {
             sort => 'name',
             join => [
@@ -310,7 +320,6 @@ sub archive_tags {
     my $builder = $ctx->stash('builder');
     my $tokens  = $ctx->stash('tokens');
     while ( my $t = $iter->() ) {
-        next if $t->is_private;
         local $ctx->{__stash}{Tag}             = $t;
         local $ctx->{__stash}{tag_count}       = undef;
         local $ctx->{__stash}{tag_entry_count} = undef;
@@ -331,7 +340,7 @@ sub search_tags {
 
     #    my %tags = map { $_ => 1, MT::Tag->normalize($_) => 1 } @tag_names;
     #    my @tags = MT::Tag->load({ name => [ keys %tags ] });
-    my @tags = MT::Tag->load( { name => @tag_names } );
+    my @tags = MT::Tag->load( { name => \@tag_names } );
     return '' unless scalar @tags;
 
     my $res     = '';
