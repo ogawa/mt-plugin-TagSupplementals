@@ -60,6 +60,10 @@ sub init_registry {
                 },
                 modifier => { encode_urlplus => $core_pkg . 'encode_urlplus', },
             },
+            callbacks => {
+                'MT::Entry::pre_save'   => $core_pkg . 'cb_object_pre_save',
+                'MT::Entry::pre_remove' => $core_pkg . 'cb_object_pre_remove',
+            },
         }
     );
 }

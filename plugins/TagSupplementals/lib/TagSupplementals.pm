@@ -48,7 +48,7 @@ sub tag_last_updated {
 sub __tag_coocurrence_cache_key {
     my $obj = shift;
     return undef unless $obj->id;
-    sprintf "%stag-coocurrence-%d", $obj->datasource, $obj->id;
+    return sprintf "%stag-coocurrence-%d", $obj->datasource, $obj->id;
 }
 
 sub TAG_COOCURRENCE_CACHE_TIME () { 604800 }    ## 7 * 24 * 60 * 60 == 1 week
@@ -110,6 +110,8 @@ sub __get_tag_coocurrence {
                 $rank{ $_->object_id } += $rank foreach @otags;
             }
         }
+
+        # remove the diagonal element
         delete $rank{ $entry->id };
     }
 
@@ -117,6 +119,58 @@ sub __get_tag_coocurrence {
     $entry->{__coocurrence} = \%rank;
     \%rank;
 }
+
+sub __invalidate_tag_coocurrence {
+    my $obj       = shift;
+    my $obj_class = MT->model( $obj->datasource );
+    my @memkeys;
+
+    # remove cache for the entry
+    delete $obj->{__tag_coocurrence};
+    push @memkeys, __tag_coocurrence_cache_key($obj);
+
+    # remove cache for entries related to the entry
+    my %tag_ids;
+    foreach ( @{ $obj->get_tag_objects } ) {
+        $tag_ids{ $_->id } = 1;
+        my @more = MT::Tag->load( { n8d_id => $_->n8d_id || $_->id } );
+        $tag_ids{ $_->id } = 1 foreach @more;
+    }
+    my $iter = $obj_class->load_iter(
+        { blog_id => $obj->blog_id, },
+        {
+            join => [
+                'MT::ObjectTag',
+                'object_id',
+                {
+                    tag_id            => [ keys %tag_ids ],
+                    object_datasource => $obj->datasource,
+                },
+                { unique => 1, }
+            ]
+        }
+    );
+    while ( my $o = $iter->() ) {
+        delete $o->{__tag_coocurrence};
+        push @memkeys, __tag_coocurrence_cache_key($o);
+    }
+    return unless @memkeys;
+
+    # remove memcached's cache entries
+    require MT::Memcached;
+    my $cache = MT::Memcached->instance;
+    if ( $cache->{memcached} ) {
+        if ( $cache->{memcached}->can('delete_multi') ) {
+            $cache->delete_multi(@memkeys);
+        }
+        else {
+            $cache->delete($_) foreach @memkeys;
+        }
+    }
+}
+
+sub cb_object_pre_save   { __invalidate_tag_coocurrence( $_[1] ) }
+sub cb_object_pre_remove { __invalidate_tag_coocurrence( $_[1] ) }
 
 sub related_entries {
     my ( $ctx, $args, $cond ) = @_;
@@ -137,7 +191,7 @@ sub related_entries {
     my @entries;
     my $i = 0;
     for my $eid (@eids) {
-        my $e = MT::Entry->load($eid);
+        my $e = MT::Entry->lookup($eid);
         if ( $e && $e->status == MT::Entry::RELEASE() ) {
             next if $i < $offset;
             push @entries, $e;
