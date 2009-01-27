@@ -174,6 +174,8 @@ sub cb_object_pre_remove { __invalidate_tag_coocurrence( $_[1] ) }
 
 sub related_entries {
     my ( $ctx, $args, $cond ) = @_;
+    my $timer = MT->get_timer;
+    $timer->pause_partial if $timer;
     my $entry = $ctx->stash('entry')
       or return $ctx->_no_entry_error();
     my $rank = __get_tag_coocurrence( $entry, $ctx, $args )
@@ -232,6 +234,7 @@ sub related_entries {
         $res .= $out;
         $i++;
     }
+    $timer->mark($ctx->stash('tag')) if $timer;
     $res;
 }
 
