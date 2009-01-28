@@ -136,6 +136,7 @@ sub __invalidate_tag_coocurrence {
         my @more = MT::Tag->load( { n8d_id => $_->n8d_id || $_->id } );
         $tag_ids{ $_->id } = 1 foreach @more;
     }
+    return unless %tag_ids;
     my $iter = $obj_class->load_iter(
         { blog_id => $obj->blog_id, },
         {
@@ -234,7 +235,7 @@ sub related_entries {
         $res .= $out;
         $i++;
     }
-    $timer->mark($ctx->stash('tag')) if $timer;
+    $timer->mark( $ctx->stash('tag') ) if $timer;
     $res;
 }
 
