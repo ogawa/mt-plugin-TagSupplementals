@@ -2,11 +2,7 @@
 package TagSupplementals::XSearch;
 
 use strict;
-use MT::Template::Context;
-use MT::Entry;
-use MT::Tag;
-use MT::ObjectTag;
-use MT::Util;
+use MT;
 use MT::XSearch;
 
 MT::XSearch->add_search_plugin(
@@ -23,6 +19,10 @@ sub tag_xsearch_link {
     my ( $ctx, $args, $cond ) = @_;
     my $tag = $ctx->stash('Tag') or return '';
     my $delimiter = $args->{delimiter} || '';
+
+    require MT::Template::Context;
+    require MT::Util;
+
     my $path = MT::Template::Context->_hdlr_cgi_path($ctx);
 
     $path
@@ -75,6 +75,11 @@ sub xsearch_on_execute {
     my $lastn      = $args->{lastn}      || 0;
 
     my $tags = $args->{search} or MT->error('Search string is required.');
+
+    require MT::Tag;
+    require MT::Entry;
+    require MT::ObjectTag;
+
     my @tag_names = MT::Tag->split( $delimiter, $tags )
       or return [];
     my $tag_count = scalar @tag_names;
@@ -91,34 +96,17 @@ sub xsearch_on_execute {
     my @tag_ids = map { $_->id } @tags;
 
     my @eids;
-    if ( MT::Object->driver->can('count_group_by') ) {
-        my $iter = MT::ObjectTag->count_group_by(
-            {
-                blog_id           => $blog_id,
-                tag_id            => \@tag_ids,
-                object_datasource => MT::Entry->datasource,
-            },
-            { group => ['object_id'], }
-        );
-        while ( my ( $count, $object_id ) = $iter->() ) {
-            push @eids, $object_id if $count == $tag_count;
-        }
-    }
-    else {
-        my $iter = MT::ObjectTag->load_iter(
-            {
-                blog_id           => $blog_id,
-                tag_id            => \@tag_ids,
-                object_datasource => MT::Entry->datasource,
-            }
-        );
-        my %count;
-        while ( my $otag = $iter->() ) {
-            $count{ $otag->object_id }++;
-        }
-        foreach ( keys %count ) {
-            push @eids, $_ if $count{$_} == $tag_count;
-        }
+    my $iter = MT::ObjectTag->count_group_by(
+        {
+            blog_id           => $blog_id,
+            tag_id            => \@tag_ids,
+            object_datasource => MT::Entry->datasource,
+        },
+        { group => ['object_id'], }
+    );
+
+    while ( my ( $count, $object_id ) = $iter->() ) {
+        push @eids, $object_id if $count == $tag_count;
     }
     return [] unless scalar @eids;
 

@@ -17,7 +17,7 @@ our $VERSION = '0.21';
 our $HAVE_MT_XSEARCH = 0;
 {
     eval { require MT::XSearch; $HAVE_MT_XSEARCH = 1 };
-    eval "use TaggSupplementals::XSearch" if $HAVE_MT_XSEARCH;
+    eval "use TagSupplementals::XSearch" if $HAVE_MT_XSEARCH;
 }
 
 my $plugin = __PACKAGE__->new(
