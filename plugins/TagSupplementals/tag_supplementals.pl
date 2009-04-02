@@ -12,7 +12,7 @@ use base qw( MT::Plugin );
 
 use MT 4;
 
-our $VERSION = '0.21';
+our $VERSION = '0.22';
 
 our $HAVE_MT_XSEARCH = 0;
 {
