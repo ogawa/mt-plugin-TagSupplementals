@@ -258,7 +258,7 @@ sub related_tags {
 
     my $iter = MT::Tag->load_iter(
         {
-            not        => { id => $tag->id },
+            id         => { not => $tag->id },
             is_private => 0,
         },
         {
