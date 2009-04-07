@@ -111,7 +111,12 @@ sub xsearch_on_execute {
     return [] unless scalar @eids;
 
     my @entries;
-    map { push @entries, MT::Entry->load($_) } @eids;
+    for my $eid (@eids) {
+        my $e = MT::Entry->lookup($eid);
+        if ( $e && $e->status == MT::Entry::RELEASE() ) {
+            push @entries, $e;
+        }
+    }
     @entries =
       $sort_order eq 'descend'
       ? sort { $b->created_on <=> $a->created_on } @entries
