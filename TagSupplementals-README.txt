@@ -17,7 +17,7 @@ handling "tag" extensively.
 
 = See Also =
 
-http://code.as-is.net/public/wiki/TagSupplementals_Plugin
+https://github.com/ogawa/mt-plugin-TagSupplementals
 
 --
 $Id$
