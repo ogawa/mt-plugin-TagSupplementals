@@ -203,6 +203,9 @@ sub related_entries {
     my $i = 0;
     for my $eid (@eids) {
         my $e = MT::Entry->lookup($eid);
+        if ( my $class_type = $args->{ class_type } ) {
+            next if $e->class ne $class_type;
+        }
         if ( $e && $e->status == MT::Entry::RELEASE() ) {
             next if $i < $offset;
             push @entries, $e;
